@@ -1,0 +1,76 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+  	function isLogged() {
+    	return request.auth != null && request.auth.uid != null;
+    }
+    
+  	function isCreator(data) {
+    	return isLogged() && data.creatorId == request.auth.uid;
+    }
+    
+    function validateCreatorRequestData(data) {
+    	return request.auth.uid == data.creatorId
+      	&& request.auth.token.name == data.creatorName;
+    }
+    
+    function validatePollRequestData(data) {
+    	return data.keys().hasOnly(["closed", "name", "endAt", "creatorId", "creatorName", "result"])
+      	&& validateCreatorRequestData(data)
+      	&& data.endAt is timestamp
+        && data.closed == false
+        && data.result == null
+        && data.name is string
+        && data.name.size() > 0
+      	&& data.name.size() < 100;
+    }
+    
+    function validatePollOption(optionId) {
+    	return request.resource.data.keys().hasOnly(["name"])
+      	&& request.resource.data.name is string
+      	&& request.resource.data.name.size() < 100
+      	&& optionId == request.resource.data.name;
+    }
+    
+    function pollIsClosed(pollData) {
+    	return pollData.closed == true
+    }
+    
+    function pollIsClosedById(pollId) {
+    	return pollIsClosed(get(/databases/$(db)/documents/polls/$(pollId)).data);
+    }
+  
+  	match /options/{optionId} {
+      allow read: if isLogged();
+      allow create, update: if isLogged() && validatePollOption(optionId);
+    }
+    
+    match /polls/{pollId} {
+      allow read: if isLogged();
+      allow create: if isLogged() && validatePollRequestData(request.resource.data);
+      allow update: if isCreator(resource.data) 
+        && !pollIsClosed(resource.data)
+        && validatePollRequestData(request.resource.data);
+    }
+    
+    match /polls/{pollId}/options/{optionId} {
+      allow read: if isLogged();
+      allow create, update: if isLogged() 
+        && !pollIsClosedById(pollId)
+      	&& validatePollOption(optionId);
+    }
+    
+    match /polls/{pollId}/votes/{userId} {
+      allow read: if isLogged();
+      allow delete: if isLogged()
+        && !pollIsClosedById(pollId)
+      	&& request.auth.uid == userId;
+      allow create, update: if isLogged() 
+      	&& request.auth.uid == userId
+      	&& request.resource.data.keys().hasOnly(["optionId", "creatorId", "creatorName"])
+      	&& validateCreatorRequestData(request.resource.data)
+        && !pollIsClosedById(pollId)
+        && exists(/databases/$(db)/documents/polls/$(pollId)/options/$(request.resource.data.optionId));
+    }
+  }
+}

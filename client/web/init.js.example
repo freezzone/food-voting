@@ -1,0 +1,12 @@
+// Your web app's Firebase configuration
+var firebaseConfig = {
+  apiKey: "update",
+  authDomain: "update",
+  databaseURL: "update",
+  projectId: "update",
+  storageBucket: "update",
+  messagingSenderId: "update",
+  appId: "update"
+};
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
